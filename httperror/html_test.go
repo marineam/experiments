@@ -82,22 +82,16 @@ the <a href="mailto:root@localhost">webmaster</a>.
 
 func TestHTMLTextTrivial(t *testing.T) {
 	const expect = apacheTrivial404Text
-	text, err := htmlText([]byte(apacheTrivial404Body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(text) != expect {
+	text := htmlText([]byte(apacheTrivial404Body), "")
+	if text != expect {
 		t.Fatalf("text != expect:\n%s\n%s", text, expect)
 	}
 }
 
 func TestHTMLTextFancy(t *testing.T) {
 	const expect = apacheFancy404Text
-	text, err := htmlText([]byte(apacheFancy404Body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(text) != expect {
+	text := htmlText([]byte(apacheFancy404Body), "")
+	if text != expect {
 		t.Fatalf("text != expect:\n%s\n%s", text, expect)
 	}
 }

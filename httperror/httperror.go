@@ -44,12 +44,12 @@ func New(resp *http.Response) *HTTPError {
 	resp.Body = ioutil.NopCloser(&buf)
 
 	msg := "http error: " + resp.Status
-	if buf.Len() > 0 {
-		// TODO: extract <body> text from HTML documents.
-		switch contentType(resp) {
-		case "text/plain":
-			msg += ": " + bodyText2Msg(buf.Bytes())
-		}
+	body := bodyText(buf.Bytes(), resp.Header.Get("Content-Type"))
+	if len(body) > 64 { // a reasonable length for Go errors.
+		body = body[:64]
+	}
+	if len(body) > 0 {
+		msg += ": " + body
 	}
 
 	return &HTTPError{
@@ -94,32 +94,47 @@ func (he *HTTPError) Temporary() bool {
 	}
 }
 
-// Return no more than 64 characters from the first line of text.
-// Sufficient for use with servers returning errors via http.Error.
-func bodyText2Msg(b []byte) string {
-	b = bytes.TrimLeft(b, "\r\n\t ")
-	if len(b) > 64 {
-		b = b[:64]
+func bodyText(b []byte, contentType string) string {
+	typ, par, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return ""
 	}
+	charset, _ := par["charset"]
+
+	switch typ {
+	case "text/plain":
+		return plainText(b, charset)
+	case "text/html":
+		return htmlText(b, charset)
+	default:
+		return ""
+	}
+}
+
+// Return the first line of text. Sufficient for servers using http.Error.
+// Translates from iso-8859-1 if required.
+func plainText(b []byte, charset string) string {
+	b = bytes.TrimLeft(b, "\r\n\t ")
 	i := bytes.IndexAny(b, "\r\n")
 	if i > 0 {
 		b = b[:i]
 	}
-	return string(b)
-}
 
-func contentType(resp *http.Response) string {
-	typ, par, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if err != nil {
+	if len(b) == 0 {
 		return ""
 	}
 
-	charset, _ := par["charset"]
-	charset = strings.ToLower(charset)
-	// Only allow UTF-8 and ASCII since Go assumes UTF-8.
-	if charset != "" && charset != "utf-8" && charset != "us-ascii" {
+	switch strings.ToLower(charset) {
+	case "", "utf-8", "us-ascii":
+		return string(b)
+	case "iso-8859-1":
+		runes := make([]rune, len(b))
+		for i, c := range b {
+			runes[i] = rune(c)
+		}
+		return string(runes)
+	default:
+		// give up
 		return ""
 	}
-
-	return typ
 }

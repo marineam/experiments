@@ -56,21 +56,27 @@ func TestGoTextError(t *testing.T) {
 }
 
 func TestApacheTrivialHTML(t *testing.T) {
+	const expect = `http error: Not Found: Not Found The requested URL /404 was not found on this server. A`
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", apacheTrivial404Type)
 	rec.WriteHeader(http.StatusNotFound)
 	rec.Write([]byte(apacheTrivial404Body))
-	New(rec.Result())
-	t.Skip("iso-8859-1 and html not implemented")
+	err := New(rec.Result())
+	if err.Error() != expect {
+		t.Errorf("err != expect:\n%s\n%s", err.Error(), expect)
+	}
 }
 
 func TestApacheFancyHTML(t *testing.T) {
+	const expect = `http error: Not Found: Object not found! The requested URL was not found on this server`
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", apacheFancy404Type)
 	rec.WriteHeader(http.StatusNotFound)
 	rec.Write([]byte(apacheFancy404Body))
-	New(rec.Result())
-	t.Skip("html not implemented")
+	err := New(rec.Result())
+	if err.Error() != expect {
+		t.Errorf("err != expect:\n%s\n%s", err.Error(), expect)
+	}
 }
 
 func ExampleHTTPError() {

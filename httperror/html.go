@@ -15,6 +15,7 @@
 package httperror
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/xml"
 	"errors"
@@ -25,39 +26,64 @@ import (
 )
 
 // htmlText strips down the body of an HTML document to a single line of text.
-func htmlText(b []byte) ([]byte, error) {
-	dec := xml.NewDecoder(bytes.NewReader(b))
+// charset may be declared in content type header or document or both.
+func htmlText(b []byte, charset string) string {
+	var reader io.Reader
+	switch strings.ToLower(charset) {
+	case "", "utf-8", "us-ascii":
+		reader = bytes.NewReader(b)
+	case "iso-8859-1":
+		reader = newLatin1Reader(bytes.NewReader(b))
+	default:
+		// give up
+		return ""
+	}
+
+	dec := xml.NewDecoder(reader)
 	dec.Strict = false
 	dec.AutoClose = xml.HTMLAutoClose
 	dec.Entity = xml.HTMLEntity
+	dec.CharsetReader = func(enc string, r io.Reader) (io.Reader, error) {
+		switch strings.ToLower(enc) {
+		case "us-ascii":
+			return r, nil
+		case "iso-8859-1":
+			if charset == "iso-8859-1" {
+				// charset was already declared and translated
+				return r, nil
+			}
+			return newLatin1Reader(r), nil
+		default:
+			return nil, errors.New("unsupported encoding")
+		}
+	}
 
 	var depth int
 	var raw []byte
 	for {
 		tok, err := dec.Token()
-		if err == io.EOF {
+		if err != nil {
 			break
-		} else if err != nil {
-			return nil, err
 		}
 
 		switch tok := tok.(type) {
 		case xml.StartElement:
 			name := strings.ToLower(tok.Name.Local)
 			if depth == 0 && name != "html" {
-				return nil, errors.New("not an html document")
+				// Not an html document
+				break
 			}
 
 			if depth == 1 && name != "body" {
 				if err := dec.Skip(); err != nil {
-					return nil, err
+					break
 				}
 				continue
 			}
 
 			if name == "script" || name == "style" {
 				if err := dec.Skip(); err != nil {
-					return nil, err
+					break
 				}
 				continue
 			}
@@ -103,5 +129,27 @@ func htmlText(b []byte) ([]byte, error) {
 		text = text[:len(text)-1]
 	}
 
-	return text, nil
+	return string(text)
+}
+
+type latin1Reader struct {
+	buf *bufio.Reader
+}
+
+func newLatin1Reader(r io.Reader) io.Reader {
+	return &latin1Reader{buf: bufio.NewReader(r)}
+}
+
+func (l *latin1Reader) Read(b []byte) (n int, err error) {
+	for {
+		c, err := l.buf.ReadByte()
+		if err != nil {
+			return n, err
+		}
+		if n+utf8.RuneLen(rune(c)) > len(b) {
+			l.buf.UnreadByte()
+			return n, nil
+		}
+		n += utf8.EncodeRune(b[n:], rune(c))
+	}
 }
