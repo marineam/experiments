@@ -16,15 +16,15 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"path"
-	"time"
 
-	"github.com/jlaffaye/ftp"
+	"github.com/secsy/goftp"
 )
 
 var (
@@ -34,17 +34,16 @@ var (
 )
 
 type File struct {
-	Path string
-	Size uint64
-	Time time.Time
+	os.FileInfo
+	Parent string
 }
 
-func newFile(parent string, entry *ftp.Entry) *File {
-	return &File{
-		Path: path.Join(parent, entry.Name),
-		Size: entry.Size,
-		Time: entry.Time,
-	}
+func (f File) Path() string {
+	return path.Join(f.Parent, f.Name())
+}
+
+func (f File) String() string {
+	return fmt.Sprint(f.Path(), f.FileInfo)
 }
 
 func main() {
@@ -53,46 +52,48 @@ func main() {
 	if err != nil {
 		log.Fatalln("Invalid URL:", err)
 	}
+	if server.Scheme != "ftp" && server.Scheme != "ftps" {
+		log.Fatalln("Invalid URL: missing ftp:// or ftps:// prefix:", server)
+	}
 	if server.Hostname() == "" {
 		log.Fatalln("Invalid URL: missing host name:", server)
 	}
 
-	options := []ftp.DialOption{
-		ftp.DialWithTimeout(5 * time.Second),
+	config := goftp.Config{
+		User:     *user,
+		Password: *password,
 	}
-
+	if server.Scheme == "ftps" {
+		config.TLSConfig = &tls.Config{
+			//ServerName: server.Host,
+			InsecureSkipVerify: true,
+		}
+	}
 	if *debug {
-		options = append(options, ftp.DialWithDebugOutput(os.Stderr))
+		config.Logger = os.Stderr
 		log.Println("Connecting to", server.Host)
 	}
 
-	conn, err := ftp.Dial(server.Host, options...)
+	client, err := goftp.DialConfig(config, server.Host)
 	if err != nil {
-		log.Fatalln("Connection failed:", err)
+		log.Fatalln("Client failed:", err)
 	}
-	defer conn.Quit()
-
-	if err := conn.Login(*user, *password); err != nil {
-		log.Fatalln("Login failed:", err)
-	}
+	defer client.Close()
 
 	var walk func(parent string) (files []*File)
 	walk = func(parent string) (files []*File) {
-		entries, err := conn.List(parent)
+		entries, err := client.ReadDir(parent)
 		if err != nil {
 			log.Fatalln("List error:", err)
 		}
 
 		for _, entry := range entries {
-			switch entry.Type {
-			case ftp.EntryTypeFile:
-				files = append(files, newFile(parent, entry))
-			case ftp.EntryTypeFolder:
-				if entry.Name != "." && entry.Name != ".." {
-					files = append(files, walk(path.Join(parent, entry.Name))...)
+			if entry.IsDir() {
+				if entry.Name() != "." && entry.Name() != ".." {
+					files = append(files, walk(path.Join(parent, entry.Name()))...)
 				}
-			case ftp.EntryTypeLink:
-				// ignore for now
+			} else {
+				files = append(files, &File{entry, parent})
 			}
 		}
 
