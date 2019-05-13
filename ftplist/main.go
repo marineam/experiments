@@ -22,29 +22,18 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"path"
+	"time"
 
 	"github.com/secsy/goftp"
 )
 
 var (
 	debug    = flag.Bool("debug", false, "output protocol debug to stderr")
+	insecure = flag.Bool("insecure", false, "disable TLS server name verification")
+	timeout  = flag.Duration("timeout", 5*time.Second, "timeout for all operations")
 	user     = flag.String("user", "anonymous", "ftp user name")
 	password = flag.String("password", "anonymous", "ftp password")
 )
-
-type File struct {
-	os.FileInfo
-	Parent string
-}
-
-func (f File) Path() string {
-	return path.Join(f.Parent, f.Name())
-}
-
-func (f File) String() string {
-	return fmt.Sprint(f.Path(), f.FileInfo)
-}
 
 func main() {
 	flag.Parse()
@@ -62,11 +51,12 @@ func main() {
 	config := goftp.Config{
 		User:     *user,
 		Password: *password,
+		Timeout:  *timeout,
 	}
 	if server.Scheme == "ftps" {
 		config.TLSConfig = &tls.Config{
-			//ServerName: server.Host,
-			InsecureSkipVerify: true,
+			ServerName:         server.Hostname(),
+			InsecureSkipVerify: *insecure,
 		}
 	}
 	if *debug {
@@ -80,27 +70,11 @@ func main() {
 	}
 	defer client.Close()
 
-	var walk func(parent string) (files []*File)
-	walk = func(parent string) (files []*File) {
-		entries, err := client.ReadDir(parent)
-		if err != nil {
-			log.Fatalln("List error:", err)
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				if entry.Name() != "." && entry.Name() != ".." {
-					files = append(files, walk(path.Join(parent, entry.Name()))...)
-				}
-			} else {
-				files = append(files, &File{entry, parent})
-			}
-		}
-
-		return files
+	files, err := FindFiles(client, server.Path)
+	if err != nil {
+		log.Fatalln("Listing files failed:", err)
 	}
 
-	files := walk(server.Path)
 	for _, file := range files {
 		fmt.Println(*file)
 	}
