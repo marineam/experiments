@@ -1,1 +1,2 @@
-testdata/pure-ftpd*
+testdata/ftpd.sh
+testdata/pure-ftpd-*

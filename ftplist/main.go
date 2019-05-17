@@ -24,10 +24,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/marineam/experiments/network/inetd"
 	"github.com/secsy/goftp"
 )
 
 var (
+	dummy    = flag.Bool("dummy", false, "launch our own ftp server for testing")
 	debug    = flag.Bool("debug", false, "output protocol debug to stderr")
 	insecure = flag.Bool("insecure", false, "disable TLS server name verification")
 	timeout  = flag.Duration("timeout", 5*time.Second, "timeout for all operations")
@@ -37,15 +39,33 @@ var (
 
 func main() {
 	flag.Parse()
-	server, err := url.Parse(flag.Arg(0))
-	if err != nil {
-		log.Fatalln("Invalid URL:", err)
-	}
-	if server.Scheme != "ftp" && server.Scheme != "ftps" {
-		log.Fatalln("Invalid URL: missing ftp:// or ftps:// prefix:", server)
-	}
-	if server.Hostname() == "" {
-		log.Fatalln("Invalid URL: missing host name:", server)
+
+	var server *url.URL
+	if *dummy {
+		*insecure = true
+		inetd, err := inetd.Listen("tcp", "localhost:0", "./testdata/ftpd.sh", "--tls=3")
+		if err != nil {
+			log.Fatalln("Failed initialize launch test ftp server:", err)
+		}
+		defer inetd.Close()
+
+		server = &url.URL{
+			Scheme: "ftps",
+			Host:   inetd.Addr().String(),
+			Path:   "/",
+		}
+	} else {
+		server, err := url.Parse(flag.Arg(0))
+		if err != nil {
+			log.Fatalln("Invalid URL:", err)
+
+		}
+		if server.Scheme != "ftp" && server.Scheme != "ftps" {
+			log.Fatalln("Invalid URL: missing ftp:// or ftps:// prefix:", server)
+		}
+		if server.Hostname() == "" {
+			log.Fatalln("Invalid URL: missing host name:", server)
+		}
 	}
 
 	config := goftp.Config{
