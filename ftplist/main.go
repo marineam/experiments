@@ -95,7 +95,7 @@ func main() {
 		log.Fatalln("Listing files failed:", err)
 	}
 
-	for _, file := range files {
-		fmt.Println(*file)
+	for name, file := range files {
+		fmt.Println(name, file)
 	}
 }

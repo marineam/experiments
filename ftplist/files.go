@@ -16,34 +16,21 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path"
 
 	"github.com/secsy/goftp"
 )
 
-type File struct {
-	os.FileInfo
-	Parent string
-}
-
-func (f File) Path() string {
-	return path.Join(f.Parent, f.Name())
-}
-
-func (f File) String() string {
-	return fmt.Sprint(f.Path(), f.FileInfo)
-}
-
 // Find all files under a given path on an FTP server.  Aborts on any error.
 // May want to skip inaccessable directories and similar things in the future.
-func FindFiles(client *goftp.Client, root string) (files []*File, err error) {
+func FindFiles(client *goftp.Client, root string) (map[string]os.FileInfo, error) {
 	entries, err := client.ReadDir(root)
 	if err != nil {
 		return nil, err
 	}
 
+	files := make(map[string]os.FileInfo)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			if entry.Name() == "." || entry.Name() == ".." {
@@ -53,9 +40,11 @@ func FindFiles(client *goftp.Client, root string) (files []*File, err error) {
 			if err != nil {
 				return nil, err
 			}
-			files = append(files, subfiles...)
+			for subpath, subentry := range subfiles {
+				files[subpath] = subentry
+			}
 		} else {
-			files = append(files, &File{entry, root})
+			files[path.Join(root, entry.Name())] = entry
 		}
 	}
 
