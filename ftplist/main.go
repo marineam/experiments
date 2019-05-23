@@ -25,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/marineam/experiments/network/ftputil"
 	"github.com/secsy/goftp"
 )
 
@@ -47,7 +48,7 @@ func main() {
 		if *debug {
 			logger = os.Stderr
 		}
-		tc, err := NewTestClient(logger)
+		tc, err := ftputil.NewTestClient(logger)
 		if err != nil {
 			log.Fatalln("Failed to setup test client:", err)
 		}
@@ -90,7 +91,7 @@ func main() {
 		defer client.Close()
 	}
 
-	files, err := FindFiles(client, server.Path)
+	files, err := ftputil.FindFiles(client, server.Path)
 	if err != nil {
 		log.Fatalln("Listing files failed:", err)
 	}
