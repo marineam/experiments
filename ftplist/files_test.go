@@ -15,41 +15,17 @@
 package main
 
 import (
-	"crypto/tls"
-	"net/url"
 	"testing"
-
-	"github.com/marineam/experiments/network/inetd"
-	"github.com/secsy/goftp"
 )
 
 func TestFindFiles(t *testing.T) {
-	inetd, err := inetd.Listen("tcp", "localhost:0", "./testdata/ftpd.sh", "--tls=3")
+	client, err := NewTestClient(nil)
 	if err != nil {
-		t.Fatal("Test ftpd failed:", err)
-	}
-	defer inetd.Close()
-
-	server := url.URL{
-		Scheme: "ftps",
-		Host:   inetd.Addr().String(),
-		Path:   "/",
-	}
-	config := goftp.Config{
-		TLSConfig: &tls.Config{
-			ServerName:         server.Hostname(),
-			InsecureSkipVerify: true,
-		},
-	}
-	//config.Logger = os.Stderr
-
-	client, err := goftp.DialConfig(config, server.Host)
-	if err != nil {
-		t.Fatal("Client failed:", err)
+		t.Fatal("Test client failed:", err)
 	}
 	defer client.Close()
 
-	files, err := FindFiles(client, server.Path)
+	files, err := FindFiles(client.Client, client.URL().Path)
 	if err != nil {
 		t.Fatal("Listing files failed:", err)
 	}

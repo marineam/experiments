@@ -19,12 +19,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"os"
 	"time"
 
-	"github.com/marineam/experiments/network/inetd"
 	"github.com/secsy/goftp"
 )
 
@@ -41,19 +41,19 @@ func main() {
 	flag.Parse()
 
 	var server *url.URL
+	var client *goftp.Client
 	if *dummy {
-		*insecure = true
-		inetd, err := inetd.Listen("tcp", "localhost:0", "./testdata/ftpd.sh", "--tls=3")
+		var logger io.Writer
+		if *debug {
+			logger = os.Stderr
+		}
+		tc, err := NewTestClient(logger)
 		if err != nil {
-			log.Fatalln("Failed initialize launch test ftp server:", err)
+			log.Fatalln("Failed to setup test client:", err)
 		}
-		defer inetd.Close()
-
-		server = &url.URL{
-			Scheme: "ftps",
-			Host:   inetd.Addr().String(),
-			Path:   "/",
-		}
+		server = tc.URL()
+		client = tc.Client
+		defer tc.Close()
 	} else {
 		server, err := url.Parse(flag.Arg(0))
 		if err != nil {
@@ -66,29 +66,29 @@ func main() {
 		if server.Hostname() == "" {
 			log.Fatalln("Invalid URL: missing host name:", server)
 		}
-	}
 
-	config := goftp.Config{
-		User:     *user,
-		Password: *password,
-		Timeout:  *timeout,
-	}
-	if server.Scheme == "ftps" {
-		config.TLSConfig = &tls.Config{
-			ServerName:         server.Hostname(),
-			InsecureSkipVerify: *insecure,
+		config := goftp.Config{
+			User:     *user,
+			Password: *password,
+			Timeout:  *timeout,
 		}
-	}
-	if *debug {
-		config.Logger = os.Stderr
-		log.Println("Connecting to", server.Host)
-	}
+		if server.Scheme == "ftps" {
+			config.TLSConfig = &tls.Config{
+				ServerName:         server.Hostname(),
+				InsecureSkipVerify: *insecure,
+			}
+		}
+		if *debug {
+			config.Logger = os.Stderr
+			log.Println("Connecting to", server.Host)
+		}
 
-	client, err := goftp.DialConfig(config, server.Host)
-	if err != nil {
-		log.Fatalln("Client failed:", err)
+		client, err := goftp.DialConfig(config, server.Host)
+		if err != nil {
+			log.Fatalln("Client failed:", err)
+		}
+		defer client.Close()
 	}
-	defer client.Close()
 
 	files, err := FindFiles(client, server.Path)
 	if err != nil {
